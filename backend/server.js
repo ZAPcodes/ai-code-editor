@@ -1,25 +1,63 @@
-const express = require('express')
-const dotenv = require('dotenv')
-const cors = require('cors')
+const express = require('express');
+const dotenv = require('dotenv');
+const cors = require('cors');
+const http = require('http');
+const mongoose = require('mongoose');
+const socketIo = require('socket.io');
+
 const authRoutes = require('./routes/auth.route');
-const mongoose = require('mongoose')
+const aiRoutes = require('./routes/ai.routes');
+const { RealTimeAIService } = require('./services/realTimeAIService');
 const { logger } = require('./utils/logger');
 const { APIError } = require('./utils/errors');
+const collaborationRoutes = require('./routes/collabration.route');
+const CollaborationRoom = require('./models/collabrationRooms.model');
+const { verifyToken } = require('./utils/jwt');
 
 dotenv.config();
 const app = express();
-// app.use(json())
-app.use(express.json());
+const server = http.createServer(app); // ✅ Create HTTP Server for WebSockets
+const io = socketIo(server, { cors: { origin: "*" } });
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
+
+// ✅ Middleware
+app.use(express.json());
 app.use(cors());
 
-app.listen(PORT,()=>{
-    console.log(`Server is listening on ${PORT}`);
-    
+// ✅ Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/collaboration', collaborationRoutes);
+
+// ✅ MongoDB Connection
+mongoose.connect(process.env.MONGO_URI, {
+}).then(() => {
+    console.log('Connected to MongoDB');
+}).catch((error) => {
+    console.error('MongoDB Connection Error:', error.message);
 });
 
+// ✅ WebSocket Setup for Real-Time AI Suggestions
+const aiService = new RealTimeAIService();
+io.on('connection', (socket) => {
+    console.log(`User connected: ${socket.id}`);
 
+    socket.on('request_suggestions', async ({ code, language, cursor_position }) => {
+        try {
+            const suggestions = await aiService.getRealTimeSuggestions({ code, language, cursor_position });
+            socket.emit('receive_suggestions', suggestions);
+        } catch (error) {
+            socket.emit('ai_error', { error: 'AI Suggestion Failed' });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
+    });
+});
+
+// ✅ Error Handling Middleware (Placed at the END)
 app.use((err, req, res, next) => {
     if (err instanceof APIError) {
         logger.error(`API Error: ${err.message}`, { statusCode: err.statusCode });
@@ -30,11 +68,7 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong' });
 });
 
-mongoose.connect(process.env.MONGO_URI, {
-}).then(() => {
-    console.log('Connected to MongoDB');
-}).catch((error) => {
-    console.log('Error:', error.message);
+// ✅ Start Server
+server.listen(PORT, () => {
+    console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
-
-app.use('/api/auth', authRoutes);

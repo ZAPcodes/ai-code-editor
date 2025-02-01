@@ -16,17 +16,13 @@ class RateLimiter {
             message: { error: 'Too many requests, please try again later.' },
             standardHeaders: true,
             legacyHeaders: false,
-            handler: (req, res, next, options) => {
+            handler: (req, res, next) => {
                 next(new APIError('Too many requests, please try again later.', 429));
             }
         });
     }
-
-    async checkLimit(userId, action) {
-        // Since we removed Redis, this method is now a placeholder.
-        // Rate limiting is handled automatically by `express-rate-limit`
-        return true;
-    }
 }
 
-module.exports = new RateLimiter();
+// Exporting an instance and the limiters object
+const rateLimiter = new RateLimiter();
+module.exports = { rateLimiter, limiters: rateLimiter.limiters };
